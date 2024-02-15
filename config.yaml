@@ -1,0 +1,12 @@
+# camera device
+camera_idx: 0
+camera_width: 1280
+camera_height: 720
+
+# checkerboard
+checkerboard_rows: 7
+checkerboard_cols: 10
+
+# capture
+capture: 3
+interval: 50
