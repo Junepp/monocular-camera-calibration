@@ -3,7 +3,7 @@ import cv2
 import yaml
 import datetime
 import numpy as np
-from typing import Dict
+from typing import Dict, Tuple
 
 
 def set_config_with_yaml() -> Dict:
@@ -32,15 +32,14 @@ def save_frames(config: Dict) -> str:
     cap = cv2.VideoCapture(camera_device_id)
 
     # set w, h of frame
-    w_retval = cap.set(3, width)
-    h_retval = cap.set(4, height)
+    w_retval = cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    h_retval = cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    print(f'set frame width to {width}?: {w_retval}')
+    print(f'set frame width to {height}?: {h_retval}')
 
     # # autofocus disable (0 to 1024)
     # af_retval = cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
     # cap.set(cv2.CAP_PROP_FOCUS, 512)
-
-    print(f'set frame width to {width}? {w_retval}')
-    print(f'set frame width to {height}? {h_retval}')
     # print(f'set camera autofoucs disable? {af_retval}')
 
     cooldown = cooldown_time
@@ -55,7 +54,6 @@ def save_frames(config: Dict) -> str:
             quit()
 
         frame_with_text = frame.copy()
-        print(frame_with_text.shape)
 
         if not start:
             cv2.putText(frame_with_text, "Press SPACEBAR to start collection frames", (50, 50), font, 1, (0, 0, 255), 1)
@@ -83,7 +81,7 @@ def save_frames(config: Dict) -> str:
     return root_path
 
 
-def calibrate_camera_for_intrinsic_parameters(config: Dict, image_root_path: str):
+def calibrate_camera_for_intrinsic_parameters(config: Dict, image_root_path: str) -> Tuple:
     images_names = os.listdir(f'{image_root_path}/frames')
 
     # read all frames
@@ -138,32 +136,37 @@ def calibrate_camera_for_intrinsic_parameters(config: Dict, image_root_path: str
             imgpoints.append(corners)
 
     cv2.destroyAllWindows()
-    ret, cmtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, (width, height), None, None)
-    print('rmse:', ret)
+    rmse, cmtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, (width, height), None, None)
+    print('rmse:', rmse)
     print('camera matrix:\n', cmtx)
     print('distortion coeffs:', dist)
 
-    return cmtx, dist
+    return rmse, cmtx, dist
 
 
 # save camera intrinsic parameters to file
-def save_camera_intrinsics(camera_matrix, distortion_coefs, save_path):
-    # TODO 1. save params as json type
-    # TODO 2. save rmse value
+def save_camera_intrinsics(camera_matrix: np.ndarray, distortion_coefs: np.ndarray, save_path: str):
     out_filename = os.path.join(save_path, 'params.dat')
-    outf = open(out_filename, 'w')
+    with open(out_filename, 'w') as outf:
+        outf.write('intrinsic:\n')
+        for rows in camera_matrix:
+            for v in rows:
+                outf.write(f'{v} ')
+            outf.write('\n')
 
-    outf.write('intrinsic:\n')
-    for l in camera_matrix:
-        for en in l:
-            outf.write(str(en) + ' ')
+        outf.write('distortion:\n')
+        for v in distortion_coefs[0]:
+            outf.write(f'{v} ')
         outf.write('\n')
 
-    outf.write('distortion:\n')
-    for en in distortion_coefs[0]:
-        outf.write(str(en) + ' ')
-    outf.write('\n')
-    outf.close()
+
+def save_logs(config: Dict, rmse: float, save_path: str):
+    out_filename = os.path.join(save_path, 'calibration.log')
+    with open(out_filename, 'w') as outf:
+        outf.write('config.yaml\n')
+        for k, v in config.items():
+            outf.write(f'-{k}: {v}\n')
+        outf.write(f'\nrmse: {rmse}\n')
 
 
 if __name__ == '__main__':
@@ -174,9 +177,12 @@ if __name__ == '__main__':
     saved_frame_path = save_frames(config=config)
 
     # CALCULATE INTRINSIC PARAMETERS
-    cmtx0, dist0 = calibrate_camera_for_intrinsic_parameters(config=config, image_root_path=saved_frame_path)
+    rmse, cmtx, dist = calibrate_camera_for_intrinsic_parameters(config=config, image_root_path=saved_frame_path)
 
     # SAVE INTRINSIC PARAMETERS
-    save_camera_intrinsics(cmtx0, dist0, save_path=saved_frame_path)  # this will write cmtx and dist to disk
+    save_camera_intrinsics(camera_matrix=cmtx, distortion_coefs=dist, save_path=saved_frame_path)
 
-    print(saved_frame_path)
+    # SAVE CALIBRATION LOGS
+    save_logs(config=config, rmse=rmse, save_path=saved_frame_path)
+
+    print(f'results save in {saved_frame_path}')
