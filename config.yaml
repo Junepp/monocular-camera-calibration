@@ -9,5 +9,5 @@ checkerboard_cols: 10
 checkerboard_box_size_scale : 2.5
 
 # capture option
-capture: 15
-interval: 100
+capture: 5
+interval: 80
